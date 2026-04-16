@@ -1,0 +1,180 @@
+# GitHub Composite Action — OCP Migration Toolkit
+# Usage:
+#   - uses: rloisell/ocp-migration-toolkit@main
+#     with:
+#       namespace: f1b263
+#       cluster: silver
+#       repo: bcgov-c/justinrcc
+#       target: emerald
+#       oc-token: ${{ secrets.OC_SA_TOKEN }}
+#       gh-token: ${{ secrets.GITHUB_TOKEN }}
+#       llm-api-key: ${{ secrets.OPENAI_API_KEY }}   # or GitHub Models token
+
+name: 'OCP Migration Toolkit'
+description: >
+  Collects OCP namespace data and GitHub repo metadata, performs AI-guided gap analysis
+  against target platform requirements, and generates a structured migration analysis
+  report (markdown + PDF) as a GitHub Actions artifact.
+
+author: 'Ryan Loiselle — BC Gov AG/PSSG'
+
+branding:
+  icon: 'activity'
+  color: 'blue'
+
+inputs:
+  namespace:
+    description: 'OCP namespace prefix (e.g. f1b263 — without the -dev/-test/-prod suffix)'
+    required: true
+  cluster:
+    description: 'Source OCP cluster: silver | gold | emerald'
+    required: true
+    default: 'silver'
+  repo:
+    description: 'GitHub repository to analyse (owner/name)'
+    required: true
+  target:
+    description: 'Target platform: emerald | aws-ecs | aws-eks'
+    required: false
+    default: 'emerald'
+  oc-server-url:
+    description: 'OpenShift API server URL'
+    required: true
+  oc-token:
+    description: 'OpenShift service account token with view access to the namespace'
+    required: true
+  gh-token:
+    description: 'GitHub token for repo inspection'
+    required: true
+  llm-api-key:
+    description: 'API key for the LLM used in gap analysis (OpenAI, GitHub Models, etc.)'
+    required: false
+  llm-model:
+    description: 'LLM model name'
+    required: false
+    default: 'gpt-4o'
+  envs:
+    description: 'Comma-separated environment suffixes to collect'
+    required: false
+    default: 'dev,test,prod,tools'
+  author:
+    description: 'Report author name'
+    required: false
+    default: 'BC Gov AG/PSSG'
+
+outputs:
+  report-path:
+    description: 'Path to the generated markdown report'
+    value: ${{ steps.generate.outputs.report-path }}
+  pdf-path:
+    description: 'Path to the generated PDF report'
+    value: ${{ steps.render.outputs.pdf-path }}
+  artifact-name:
+    description: 'Name of the uploaded GitHub Actions artifact'
+    value: ${{ steps.upload.outputs.artifact-name }}
+
+runs:
+  using: 'composite'
+  steps:
+
+    - name: Install dependencies
+      shell: bash
+      run: |
+        # pandoc
+        if ! command -v pandoc &>/dev/null; then
+          wget -q https://github.com/jgm/pandoc/releases/latest/download/pandoc-*-linux-amd64.tar.gz \
+            -O /tmp/pandoc.tar.gz
+          tar -xzf /tmp/pandoc.tar.gz -C /tmp --strip-components=2 --wildcards '*/bin/pandoc'
+          sudo mv /tmp/pandoc /usr/local/bin/
+        fi
+        # jq, yq
+        sudo apt-get install -y --quiet jq 2>/dev/null || true
+        command -v yq &>/dev/null || \
+          sudo wget -qO /usr/local/bin/yq \
+            https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 && \
+          sudo chmod +x /usr/local/bin/yq
+
+    - name: Log in to OpenShift
+      shell: bash
+      run: |
+        oc login "${{ inputs.oc-server-url }}" --token="${{ inputs.oc-token }}" \
+          --insecure-skip-tls-verify=false
+      env:
+        HOME: /root
+
+    - name: Collect namespace data
+      shell: bash
+      id: collect
+      run: |
+        chmod +x ${{ github.action_path }}/collect/collect.sh
+        ${{ github.action_path }}/collect/collect.sh \
+          --namespace "${{ inputs.namespace }}" \
+          --cluster   "${{ inputs.cluster }}" \
+          --repo      "${{ inputs.repo }}" \
+          --target    "${{ inputs.target }}" \
+          --envs      "${{ inputs.envs }}" \
+          --output    working/
+        echo "working-dir=working/${{ inputs.namespace }}" >> "$GITHUB_OUTPUT"
+      env:
+        GH_TOKEN: ${{ inputs.gh-token }}
+
+    - name: AI Gap Analysis and Report Generation
+      shell: bash
+      id: generate
+      run: |
+        # This step invokes an LLM to perform the gap analysis.
+        # It reads working/<namespace>/manifest-summary.md and the collected YAML files,
+        # applies the ocp-migration-analyst skill logic, and writes the report markdown.
+        #
+        # Implementation options:
+        #   A) Call OpenAI / GitHub Models API directly (structured prompt + files as context)
+        #   B) Use the GitHub Copilot CLI (gh copilot) if available
+        #   C) Use the openai-python SDK with the report-sections.md as the system prompt
+        #
+        # Reference: templates/report-sections.md defines the section-by-section generation guide.
+
+        APP_NAME=$(echo "${{ inputs.repo }}" | cut -d'/' -f2 | tr '[:lower:]' '[:upper:]')
+        REPORT_DIR="report"
+        REPORT_FILE="${REPORT_DIR}/${APP_NAME}-Migration-Analysis.md"
+        mkdir -p "${REPORT_DIR}"
+
+        python3 ${{ github.action_path }}/.github/scripts/generate-report.py \
+          --manifest-summary "working/${{ inputs.namespace }}/manifest-summary.md" \
+          --working-dir      "working/${{ inputs.namespace }}" \
+          --sections-guide   "${{ github.action_path }}/templates/report-sections.md" \
+          --output           "${REPORT_FILE}" \
+          --namespace        "${{ inputs.namespace }}" \
+          --cluster          "${{ inputs.cluster }}" \
+          --repo             "${{ inputs.repo }}" \
+          --target           "${{ inputs.target }}" \
+          --author           "${{ inputs.author }}" \
+          --model            "${{ inputs.llm-model }}"
+
+        echo "report-path=${REPORT_FILE}" >> "$GITHUB_OUTPUT"
+        echo "report-file=${APP_NAME}-Migration-Analysis.md" >> "$GITHUB_OUTPUT"
+      env:
+        OPENAI_API_KEY: ${{ inputs.llm-api-key }}
+
+    - name: Render PDF
+      shell: bash
+      id: render
+      run: |
+        chmod +x ${{ github.action_path }}/render/render.sh
+        ${{ github.action_path }}/render/render.sh \
+          --input  "${{ steps.generate.outputs.report-path }}" \
+          --output "report/" \
+          --css    "${{ github.action_path }}/templates/style/report-style.css"
+        PDF_FILE="report/${{ steps.generate.outputs.report-file }}"
+        PDF_FILE="${PDF_FILE%.md}.pdf"
+        echo "pdf-path=${PDF_FILE}" >> "$GITHUB_OUTPUT"
+
+    - name: Upload artifact
+      id: upload
+      uses: actions/upload-artifact@v4
+      with:
+        name: migration-analysis-${{ inputs.namespace }}
+        path: |
+          ${{ steps.generate.outputs.report-path }}
+          ${{ steps.render.outputs.pdf-path }}
+          working/${{ inputs.namespace }}/manifest-summary.md
+        retention-days: 90

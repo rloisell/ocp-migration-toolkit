@@ -1,0 +1,89 @@
+name: On-Demand Migration Analysis
+
+# Manually trigger a migration analysis for any OCP namespace + repo.
+# Produces a PDF report as a GitHub Actions artifact.
+#
+# Prerequisites (repository secrets):
+#   OC_SERVER_URL     — OpenShift API endpoint
+#   OC_SA_TOKEN       — Service account token with view access to the namespace
+#   LLM_API_KEY       — OpenAI or GitHub Models API key for AI analysis
+
+on:
+  workflow_dispatch:
+    inputs:
+      namespace:
+        description: 'OCP namespace prefix (e.g. f1b263 — without -dev/-test/-prod)'
+        required: true
+        type: string
+      cluster:
+        description: 'Source OCP cluster'
+        required: true
+        type: choice
+        options: [silver, gold, emerald]
+        default: silver
+      repo:
+        description: 'GitHub repository to analyse (owner/name)'
+        required: true
+        type: string
+        default: ${{ github.repository }}
+      target:
+        description: 'Target migration platform'
+        required: false
+        type: choice
+        options: [emerald, aws-ecs, aws-eks]
+        default: emerald
+      envs:
+        description: 'Comma-separated environment suffixes to collect'
+        required: false
+        type: string
+        default: 'dev,test,prod,tools'
+      author:
+        description: 'Report author name'
+        required: false
+        type: string
+        default: 'BC Gov AG/PSSG'
+
+jobs:
+  migration-analysis:
+    name: Migration Analysis — ${{ inputs.namespace }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write      # for artifact upload
+
+    steps:
+      - name: Checkout ocp-migration-toolkit
+        uses: actions/checkout@v4
+        with:
+          repository: rloisell/ocp-migration-toolkit
+          ref: main
+          path: toolkit
+
+      - name: Run migration analysis
+        uses: ./toolkit
+        with:
+          namespace:    ${{ inputs.namespace }}
+          cluster:      ${{ inputs.cluster }}
+          repo:         ${{ inputs.repo }}
+          target:       ${{ inputs.target }}
+          envs:         ${{ inputs.envs }}
+          author:       ${{ inputs.author }}
+          oc-server-url: ${{ secrets.OC_SERVER_URL }}
+          oc-token:      ${{ secrets.OC_SA_TOKEN }}
+          gh-token:      ${{ secrets.GITHUB_TOKEN }}
+          llm-api-key:   ${{ secrets.LLM_API_KEY }}
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Migration Analysis Complete" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Parameter | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-----------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Namespace | \`${{ inputs.namespace }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Source cluster | ${{ inputs.cluster }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Target platform | ${{ inputs.target }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Repo | ${{ inputs.repo }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Report artifact: \`migration-analysis-${{ inputs.namespace }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "Retained for 90 days." >> "$GITHUB_STEP_SUMMARY"
