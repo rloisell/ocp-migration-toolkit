@@ -298,3 +298,25 @@ Before writing the final markdown file, verify:
 - [ ] FWCR requirements are listed for every Zone B destination
 - [ ] Diagram files are referenced with correct relative paths
 - [ ] Document header has correct namespace, cluster, repo, and date
+
+---
+
+## Authoritative BC Government standards to cite
+
+When generating each section, cite the relevant OCIO standard(s) inline so the
+report can be defended in architecture review. Use these mappings (full control
+text lives in the corresponding skill):
+
+| Section | Standard / Skill | What to cite |
+| --- | --- | --- |
+| 3 — Security & Programmatic Concerns | [Security Standard for Application and Web Development and Deployment v1.3 (2015-04)](https://www2.gov.bc.ca/assets/gov/government/services-for-government-and-broader-public-sector/information-technology-services/standards-files/security_standard_application_web_development_deployment.pdf) \u2014 via `security-architect` agent | \u00a71.2 vulnerability mgmt; \u00a71.3 prod/non-prod segregation; no creds in source; 45-day dormant accounts; \u00a72.1 code review; \u00a72.2 secure coding; \u00a73.1 public-facing WAF |
+| 3 — Security & Programmatic Concerns | [Guidelines on the Use of Open Source Software (R1.0, 2012-04)](https://www2.gov.bc.ca/assets/gov/government/services-for-government-and-broader-public-sector/information-technology-services/standards-files/guidelines_on_the_use_of_open_source_software_2016.pdf) | OSS dependency due diligence \u2014 license review, business value + TCO assessment |
+| 3 — Security & Programmatic Concerns | `bc-gov-database-security` skill \u2014 [Database Security Standard v1.0 (2018-04)](https://www2.gov.bc.ca/assets/gov/government/services-for-government-and-broader-public-sector/information-technology-services/standards-files/database_security_standards_for_information_protection_-_2018-04_version_1.pdf) | If the application connects to a database: data classification, encryption-in-transit, separation of duties, no production data in test, audit |
+| 5.2 — Detailed Gaps (CI/CD) | [Development Standards for Information Systems and Services v3.0 \u00a72.1](https://www2.gov.bc.ca/assets/gov/government/services-for-government-and-broader-public-sector/information-technology-services/standards-files/development_standards_for_information_systems_and_services.pdf) \u2014 via `github-workflow` agent | Source code in github.com/bcgov; 2FA on repo admins; approved licenses |
+| 5.2 — Detailed Gaps (Application Code) | `bc-gov-rest-api` skill \u2014 [REST API Development Standard (2015-04)](https://www2.gov.bc.ca/assets/gov/government/services-for-government-and-broader-public-sector/information-technology-services/standards-files/api-standard.pdf) | If the workload exposes HTTP endpoints: 8 mandates (REST, verb correctness, single-resource URLs, metadata + ISO 8601 + OGL-BC, error messaging, version) |
+| 6 — Network Flow Analysis | `bc-gov-sdn-zones`, `bc-gov-network-architect` \u2014 [IMIT 6.13 Zones](https://intranet.gov.bc.ca/assets/intranet/mtics/ocio/es/enterprise-services-division/information-security-branch/information-security-standards-and-guidelines/imit_613_network_security_zones_standard_v5.pdf), [IMIT 6.28 Comms](https://www2.gov.bc.ca/assets/gov/government/services-for-government-and-broader-public-sector/information-technology-services/standards-files/09_-_communications_security_standard_v10.pdf), [IMIT 5.08 N2N](https://www2.gov.bc.ca/assets/gov/government/services-for-government-and-broader-public-sector/information-technology-services/standards-files/imit_508_network_to_network_connectivity_standard.pdf) + [N2N Tech & Product](https://www2.gov.bc.ca/assets/gov/government/services-for-government-and-broader-public-sector/information-technology-services/standards-files/network_to_network_connectivity_technical_and_product_standard.pdf) | Zone classification, default-deny NetworkPolicy, third-party gateway requirements |
+| 9 — Migration Plan | All applicable standards above | Each task that closes a standards gap should reference the standard \u00a7 in its description |
+
+**Rule:** When a finding maps to a specific OCIO standard, name the standard in
+the finding text (e.g. *"AppSec Standard v1.3 \u00a71.3"*) so reviewers can verify
+the citation against the source PDF.
