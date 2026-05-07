@@ -135,7 +135,15 @@ Then use the prompt template at `.github/prompts/ocp-migration-analysis.prompt.m
 
 ---
 
-## Service Architecture (Tier 3 — Copilot Extension)
+## Service Architecture (Tier 3 — Copilot Extension) — Future / Planned
+
+> 📝 **Status (May 2026): Not implemented.** Tier 3 was scoped but the team
+> **scaled back to Tier 2** (the GitHub Composite Action above) as the supported
+> delivery model. The section below is retained as a forward-looking design sketch
+> only — there is no deployed `@bc-migrate` extension and no active work on one.
+>
+> The companion repo [`bc-migrate-service`](https://github.com/rloisell/bc-migrate-service)
+> contains an early prototype but is **not maintained or deployed** to Emerald.
 
 > For BC Gov platform teams who want to offer migration analysis as a shared service.
 
