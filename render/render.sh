@@ -68,9 +68,21 @@ info "CSS:    ${CSS_FILE}"
 # ── Step 1: Markdown → HTML (pandoc) ─────────────────────────────────────────
 info "Rendering HTML intermediate ..."
 
-# Run pandoc from the input file's directory so relative image paths resolve
+# Pre-render mermaid/plantuml diagram blocks to PNG before pandoc
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PRERENDER="${SCRIPT_DIR}/pre-render-diagrams.py"
 INPUT_DIR="$(cd "$(dirname "$INPUT")" && pwd)"
 INPUT_FILE="$(basename "$INPUT")"
+INPUT_ABS="${INPUT_DIR}/${INPUT_FILE}"
+IMG_DIR="/tmp/diagrams-${INPUT_BASE}"
+MD_PROCESSED="/tmp/${INPUT_BASE}-processed.md"
+
+if grep -qE '^```(mermaid|plantuml)' "${INPUT_ABS}" 2>/dev/null; then
+  info "Pre-rendering diagrams ..."
+  python3 "${PRERENDER}" "${INPUT_ABS}" "${MD_PROCESSED}" "${IMG_DIR}" 2>&1
+  INPUT_DIR="/tmp"
+  INPUT_FILE="$(basename "${MD_PROCESSED}")"
+fi
 
 CSS_ABS="$(cd "$(dirname "$CSS_FILE")" && pwd)/$(basename "$CSS_FILE")"
 [[ -f "$CSS_ABS" ]] || warn "CSS file not found at ${CSS_ABS} — PDF will use browser defaults"
@@ -86,6 +98,10 @@ CSS_ABS="$(cd "$(dirname "$CSS_FILE")" && pwd)/$(basename "$CSS_FILE")"
     --metadata title="${TITLE}"
 )
 ok "HTML intermediate at ${HTML_TMP}"
+
+# ── Cleanup diagram temp files ────────────────────────────────────────────────
+rm -f "${MD_PROCESSED}" 2>/dev/null || true
+rm -rf "${IMG_DIR}" 2>/dev/null || true
 
 # ── Step 2: HTML → PDF (Chrome headless) ─────────────────────────────────────
 info "Rendering PDF ..."
